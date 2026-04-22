@@ -5,12 +5,7 @@ fontLink.rel = "stylesheet";
 fontLink.href = "https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&family=DM+Mono:wght@400;500&display=swap";
 document.head.appendChild(fontLink);
 
-// Optional: add your rss2json.com API key for higher rate limits
-const RSS2JSON_KEY = "";
-function rss2jsonUrl(feedUrl) {
-  const base = `https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(feedUrl)}`;
-  return RSS2JSON_KEY ? `${base}&api_key=${RSS2JSON_KEY}` : base;
-}
+const RSS_API = "/api/rss?url=";
 
 const CATEGORIES = [
   {
@@ -78,66 +73,28 @@ function formatTime(date) {
   return `Il y a ${days}j`;
 }
 
-function parseItems(items, feedInfo) {
-  return items.map(item => {
-    const raw = (item.description || item.content || "").replace(/<[^>]*>/g, "").trim();
-    return {
-      title: (item.title || "").replace(/<[^>]*>/g, "").trim(),
-      summary: raw.slice(0, 220) + (raw.length >= 220 ? "..." : ""),
-      source: feedInfo.source,
-      region: feedInfo.region,
-      link: item.link || item.guid || "",
-      time: item.pubDate ? formatTime(new Date(item.pubDate)) : "Récent",
-    };
-  }).filter(i => i.title);
-}
-
 async function fetchFeed(feedInfo) {
-  if (!feedInfo.url.startsWith("https://")) {
-    return { items: [], error: "non-https" };
-  }
-
-  // Primary: rss2json.com
   try {
-    const res = await fetch(rss2jsonUrl(feedInfo.url), { mode: "cors" });
+    const res = await fetch(RSS_API + encodeURIComponent(feedInfo.url));
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const json = await res.json();
-    if (json.status === "ok" && json.items?.length) {
-      return { items: parseItems(json.items, feedInfo), error: null };
-    }
-    throw new Error(json.message || "no items");
+    if (json.status !== "ok") throw new Error(json.error || "error");
+    return {
+      items: json.items.map(item => {
+        const raw = (item.description || "").replace(/<[^>]*>/g, "").trim();
+        return {
+          title: (item.title || "").replace(/<[^>]*>/g, "").trim(),
+          summary: raw.slice(0, 220) + (raw.length >= 220 ? "..." : ""),
+          source: feedInfo.source,
+          region: feedInfo.region,
+          link: item.link || "",
+          time: item.pubDate ? formatTime(new Date(item.pubDate)) : "Récent",
+        };
+      }).filter(i => i.title),
+      error: null,
+    };
   } catch (e) {
-    console.warn(`rss2json failed [${feedInfo.source}]: ${e.message} — trying fallback`);
-  }
-
-  // Fallback: allorigins + XML parsing
-  try {
-    const res = await fetch(`https://api.allorigins.win/raw?url=${encodeURIComponent(feedInfo.url)}`, { mode: "cors" });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const text = await res.text();
-    const xml = new DOMParser().parseFromString(text, "text/xml");
-    if (xml.querySelector("parsererror")) throw new Error("invalid xml");
-    const nodes = Array.from(xml.querySelectorAll("item, entry")).slice(0, 10);
-    if (!nodes.length) throw new Error("no items");
-    const items = nodes.map(node => {
-      const title = node.querySelector("title")?.textContent || "";
-      const desc = (node.querySelector("description, summary, content")?.textContent || "").replace(/<[^>]*>/g, "").trim();
-      const linkEl = Array.from(node.getElementsByTagName("link")).find(el => el.getAttribute("rel") !== "replies")
-        || node.getElementsByTagName("link")[0];
-      const link = linkEl?.getAttribute("href") || linkEl?.textContent?.trim() || "";
-      const pubDate = node.querySelector("pubDate, published, updated")?.textContent || "";
-      return {
-        title: title.replace(/<[^>]*>/g, "").trim(),
-        summary: desc.slice(0, 220) + (desc.length >= 220 ? "..." : ""),
-        source: feedInfo.source,
-        region: feedInfo.region,
-        link,
-        time: pubDate ? formatTime(new Date(pubDate)) : "Récent",
-      };
-    }).filter(i => i.title);
-    return { items, error: null };
-  } catch (e) {
-    console.error(`All proxies failed [${feedInfo.source}]: ${e.message}`);
+    console.error(`Feed error [${feedInfo.source}]:`, e.message);
     return { items: [], error: e.message };
   }
 }
