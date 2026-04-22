@@ -15,9 +15,11 @@ const CATEGORIES = [
     short: "Finance",
     icon: "↗",
     feeds: [
-      { url: "https://www.lesechos.fr/rss/rss_finance.xml", source: "Les Échos", region: "Europe" },
-      { url: "https://feeds.reuters.com/reuters/businessNews", source: "Reuters", region: "Global" },
-      { url: "https://www.lefigaro.fr/rss/figaro_economie.xml", source: "Le Figaro", region: "Europe" },
+      { url: "https://feeds.bbci.co.uk/news/business/rss.xml", source: "BBC Business", region: "Global" },
+      { url: "https://feeds.a.dj.com/rss/WSJcomUSBusiness.xml", source: "WSJ", region: "USA" },
+      { url: "https://rss.nytimes.com/services/xml/rss/nyt/Business.xml", source: "NYT Business", region: "USA" },
+      { url: "https://www.theguardian.com/money/rss", source: "Guardian Money", region: "Global" },
+      { url: "https://rss.nytimes.com/services/xml/rss/nyt/YourMoney.xml", source: "NYT Money", region: "USA" },
     ],
   },
   {
@@ -26,9 +28,10 @@ const CATEGORIES = [
     short: "Économie",
     icon: "◈",
     feeds: [
-      { url: "https://www.lemonde.fr/economie/rss_full.xml", source: "Le Monde Éco", region: "France" },
-      { url: "https://feeds.reuters.com/reuters/businessNews", source: "Reuters Éco", region: "Global" },
-      { url: "https://www.lesechos.fr/rss/rss_economie.xml", source: "Les Échos", region: "France" },
+      { url: "https://www.lemonde.fr/economie/rss_full.xml", source: "Le Monde", region: "France" },
+      { url: "https://feeds.bbci.co.uk/news/business/rss.xml", source: "BBC Business", region: "Global" },
+      { url: "https://feeds.a.dj.com/rss/RSSWorldNews.xml", source: "WSJ World", region: "Global" },
+      { url: "https://rss.nytimes.com/services/xml/rss/nyt/Business.xml", source: "NYT Business", region: "USA" },
     ],
   },
   {
@@ -37,9 +40,11 @@ const CATEGORIES = [
     short: "Politique",
     icon: "⬡",
     feeds: [
-      { url: "https://www.lemonde.fr/politique/rss_full.xml", source: "Le Monde", region: "France" },
-      { url: "https://www.lefigaro.fr/rss/figaro_politique.xml", source: "Le Figaro", region: "France" },
-      { url: "https://feeds.reuters.com/Reuters/worldNews", source: "Reuters World", region: "Global" },
+      { url: "https://www.france24.com/fr/france/rss", source: "France 24", region: "France" },
+      { url: "https://www.politico.eu/feed/", source: "Politico EU", region: "Europe" },
+      { url: "https://feeds.bbci.co.uk/news/politics/rss.xml", source: "BBC Politics", region: "Global" },
+      { url: "https://rss.nytimes.com/services/xml/rss/nyt/Politics.xml", source: "NYT Politics", region: "USA" },
+      { url: "https://www.theguardian.com/politics/rss", source: "Guardian Politics", region: "Global" },
     ],
   },
   {
@@ -48,9 +53,9 @@ const CATEGORIES = [
     short: "Social",
     icon: "◎",
     feeds: [
-      { url: "https://www.lemonde.fr/societe/rss_full.xml", source: "Le Monde Société", region: "France" },
-      { url: "https://www.lemonde.fr/culture/rss_full.xml", source: "Le Monde Culture", region: "France" },
-      { url: "https://feeds.bbci.co.uk/news/entertainment_and_arts/rss.xml", source: "BBC Culture", region: "Global" },
+      { url: "https://www.theguardian.com/culture/rss", source: "Guardian Culture", region: "Global" },
+      { url: "https://www.theguardian.com/film/rss", source: "Guardian Film", region: "Global" },
+      { url: "https://www.theguardian.com/books/rss", source: "Guardian Books", region: "Global" },
     ],
   },
 ];
