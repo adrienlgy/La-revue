@@ -41,7 +41,7 @@ const REFRESH_INTERVAL = 2.5 * 60 * 60 * 1000;
 const DIGEST_HOUR = 18; // 18h00
 
 async function fetchNews(category) {
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
+  const res = await fetch("/api/news", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -57,17 +57,14 @@ async function fetchNews(category) {
 }
 
 async function fetchDailyDigest() {
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
+  const res = await fetch("/api/news", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       model: "claude-sonnet-4-20250514",
       max_tokens: 1500,
       system: "Tu es un éditorialiste. Réponds UNIQUEMENT avec du JSON valide, sans markdown, sans backticks.",
-      messages: [{
-        role: "user",
-        content: `Génère les 5 actualités les plus importantes et marquantes de ce jour (toutes catégories confondues: finance, économie, politique, social). Ces news doivent être les plus impactantes de la journée à l'échelle mondiale et française. Pour chaque news: titre fort, résumé complet de 3-4 lignes, source crédible, catégorie parmi [Finance, Économie, Politique, Social]. Réponds UNIQUEMENT en JSON: {"digest": [{"title":"","summary":"","source":"","category":""}]}`
-      }],
+      messages: [{ role: "user", content: `Génère les 5 actualités les plus importantes de ce jour. Pour chaque news: titre fort, résumé complet de 3-4 lignes, source crédible, catégorie parmi [Finance, Économie, Politique, Social & Culturel]. Réponds UNIQUEMENT en JSON: {"digest": [{"title":"","summary":"","source":"","category":""}]}` }],
     }),
   });
   const data = await res.json();
