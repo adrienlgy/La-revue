@@ -5,8 +5,7 @@ fontLink.rel = "stylesheet";
 fontLink.href = "https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&family=DM+Mono:wght@400;500&display=swap";
 document.head.appendChild(fontLink);
 
-// Use allorigins.win to bypass CORS
-const PROXY = "https://api.allorigins.win/raw?url=";
+const RSS2JSON = "https://api.rss2json.com/v1/api.json?count=5&rss_url=";
 
 const CATEGORIES = [
   {
@@ -76,36 +75,25 @@ function formatTime(date) {
 
 async function fetchFeed(feedInfo) {
   try {
-    const proxiedUrl = PROXY + encodeURIComponent(feedInfo.url);
-    const res = await fetch(proxiedUrl);
+    const res = await fetch(RSS2JSON + encodeURIComponent(feedInfo.url));
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const text = await res.text();
-    const parser = new DOMParser();
-    const xml = parser.parseFromString(text, "text/xml");
-    if (xml.querySelector("parsererror")) {
-      console.error("XML parse error for", feedInfo.source, text.slice(0, 300));
+    const json = await res.json();
+    if (json.status !== "ok") {
+      console.error("rss2json error:", feedInfo.source, json.message);
       return [];
     }
-    // Support RSS (<item>) and Atom (<entry>)
-    const items = Array.from(xml.querySelectorAll("item, entry")).slice(0, 4);
-    return items.map(item => {
-      const title = item.querySelector("title")?.textContent || "";
-      const desc = item.querySelector("description, summary, content")?.textContent || "";
-      // RSS: <link>url</link>  Atom: <link href="url"/>
-      const linkEl = Array.from(item.getElementsByTagName("link"))
-        .find(el => el.getAttribute("rel") !== "replies") || item.getElementsByTagName("link")[0];
-      const link = linkEl?.getAttribute("href") || linkEl?.textContent?.trim() || "";
-      const pubDate = item.querySelector("pubDate, published, updated")?.textContent || "";
-      const cleanDesc = desc.replace(/<[^>]*>/g, "").trim().slice(0, 220);
+    return json.items.map(item => {
+      const raw = (item.description || item.content || "").replace(/<[^>]*>/g, "").trim();
+      const summary = raw.slice(0, 220) + (raw.length >= 220 ? "..." : "");
       return {
-        title: title.replace(/<[^>]*>/g, "").trim(),
-        summary: cleanDesc + (cleanDesc.length >= 220 ? "..." : ""),
+        title: (item.title || "").replace(/<[^>]*>/g, "").trim(),
+        summary,
         source: feedInfo.source,
         region: feedInfo.region,
-        link,
-        time: pubDate ? formatTime(new Date(pubDate)) : "Récent",
+        link: item.link || item.guid || "",
+        time: item.pubDate ? formatTime(new Date(item.pubDate)) : "Récent",
       };
-    });
+    }).filter(item => item.title);
   } catch (e) {
     console.error("Feed error:", feedInfo.source, e);
     return [];
