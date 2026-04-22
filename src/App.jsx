@@ -5,8 +5,8 @@ fontLink.rel = "stylesheet";
 fontLink.href = "https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&family=DM+Mono:wght@400;500&display=swap";
 document.head.appendChild(fontLink);
 
-// Use corsproxy.io to bypass CORS
-const PROXY = "https://corsproxy.io/?";
+// Use allorigins.win to bypass CORS
+const PROXY = "https://api.allorigins.win/raw?url=";
 
 const CATEGORIES = [
   {
@@ -80,7 +80,9 @@ async function fetchFeed(feedInfo) {
     return items.map(item => {
       const title = item.querySelector("title")?.textContent || "";
       const desc = item.querySelector("description")?.textContent || "";
-      const link = item.querySelector("link")?.textContent || "";
+      const linkEl = item.querySelector("link");
+      const link = linkEl?.textContent || linkEl?.getAttribute("href") ||
+        item.getElementsByTagName("link")[0]?.textContent || "";
       const pubDate = item.querySelector("pubDate")?.textContent || "";
       const cleanDesc = desc.replace(/<[^>]*>/g, "").trim().slice(0, 220);
       return {
