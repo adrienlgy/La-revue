@@ -5,7 +5,12 @@ fontLink.rel = "stylesheet";
 fontLink.href = "https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&family=DM+Mono:wght@400;500&display=swap";
 document.head.appendChild(fontLink);
 
-const RSS2JSON = "https://api.rss2json.com/v1/api.json?rss_url=";
+// Optional: add your rss2json.com API key for higher rate limits
+const RSS2JSON_KEY = "";
+function rss2jsonUrl(feedUrl) {
+  const base = `https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(feedUrl)}`;
+  return RSS2JSON_KEY ? `${base}&api_key=${RSS2JSON_KEY}` : base;
+}
 
 const CATEGORIES = [
   {
@@ -73,47 +78,89 @@ function formatTime(date) {
   return `Il y a ${days}j`;
 }
 
+function parseItems(items, feedInfo) {
+  return items.map(item => {
+    const raw = (item.description || item.content || "").replace(/<[^>]*>/g, "").trim();
+    return {
+      title: (item.title || "").replace(/<[^>]*>/g, "").trim(),
+      summary: raw.slice(0, 220) + (raw.length >= 220 ? "..." : ""),
+      source: feedInfo.source,
+      region: feedInfo.region,
+      link: item.link || item.guid || "",
+      time: item.pubDate ? formatTime(new Date(item.pubDate)) : "Récent",
+    };
+  }).filter(i => i.title);
+}
+
 async function fetchFeed(feedInfo) {
+  if (!feedInfo.url.startsWith("https://")) {
+    return { items: [], error: "non-https" };
+  }
+
+  // Primary: rss2json.com
   try {
-    const res = await fetch(RSS2JSON + encodeURIComponent(feedInfo.url));
+    const res = await fetch(rss2jsonUrl(feedInfo.url), { mode: "cors" });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const json = await res.json();
-    if (json.status !== "ok") {
-      console.error("rss2json error:", feedInfo.source, json.message);
-      return [];
+    if (json.status === "ok" && json.items?.length) {
+      return { items: parseItems(json.items, feedInfo), error: null };
     }
-    return json.items.map(item => {
-      const raw = (item.description || item.content || "").replace(/<[^>]*>/g, "").trim();
-      const summary = raw.slice(0, 220) + (raw.length >= 220 ? "..." : "");
+    throw new Error(json.message || "no items");
+  } catch (e) {
+    console.warn(`rss2json failed [${feedInfo.source}]: ${e.message} — trying fallback`);
+  }
+
+  // Fallback: allorigins + XML parsing
+  try {
+    const res = await fetch(`https://api.allorigins.win/raw?url=${encodeURIComponent(feedInfo.url)}`, { mode: "cors" });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const text = await res.text();
+    const xml = new DOMParser().parseFromString(text, "text/xml");
+    if (xml.querySelector("parsererror")) throw new Error("invalid xml");
+    const nodes = Array.from(xml.querySelectorAll("item, entry")).slice(0, 10);
+    if (!nodes.length) throw new Error("no items");
+    const items = nodes.map(node => {
+      const title = node.querySelector("title")?.textContent || "";
+      const desc = (node.querySelector("description, summary, content")?.textContent || "").replace(/<[^>]*>/g, "").trim();
+      const linkEl = Array.from(node.getElementsByTagName("link")).find(el => el.getAttribute("rel") !== "replies")
+        || node.getElementsByTagName("link")[0];
+      const link = linkEl?.getAttribute("href") || linkEl?.textContent?.trim() || "";
+      const pubDate = node.querySelector("pubDate, published, updated")?.textContent || "";
       return {
-        title: (item.title || "").replace(/<[^>]*>/g, "").trim(),
-        summary,
+        title: title.replace(/<[^>]*>/g, "").trim(),
+        summary: desc.slice(0, 220) + (desc.length >= 220 ? "..." : ""),
         source: feedInfo.source,
         region: feedInfo.region,
-        link: item.link || item.guid || "",
-        time: item.pubDate ? formatTime(new Date(item.pubDate)) : "Récent",
+        link,
+        time: pubDate ? formatTime(new Date(pubDate)) : "Récent",
       };
-    }).filter(item => item.title);
+    }).filter(i => i.title);
+    return { items, error: null };
   } catch (e) {
-    console.error("Feed error:", feedInfo.source, e);
-    return [];
+    console.error(`All proxies failed [${feedInfo.source}]: ${e.message}`);
+    return { items: [], error: e.message };
   }
 }
 
 async function fetchCategory(category) {
   const results = await Promise.all(category.feeds.map(fetchFeed));
-  const all = results.flat();
+  const errors = results
+    .map((r, i) => r.error ? category.feeds[i].source : null)
+    .filter(Boolean);
+  const all = results.flatMap(r => r.items);
   const seen = new Set();
-  return all.filter(item => {
+  const items = all.filter(item => {
     if (!item.title || seen.has(item.title)) return false;
     seen.add(item.title);
     return true;
   }).slice(0, 10);
+  return { items, errors };
 }
 
 export default function NewsApp() {
   const [activeTab, setActiveTab] = useState("finance");
   const [newsData, setNewsData] = useState({});
+  const [feedErrors, setFeedErrors] = useState({});
   const [loading, setLoading] = useState(false);
   const [spinning, setSpinning] = useState(false);
   const [expandedId, setExpandedId] = useState(null);
@@ -134,9 +181,10 @@ export default function NewsApp() {
     setNextRefresh(new Date(now.getTime() + REFRESH_INTERVAL));
     const results = {};
     for (const cat of CATEGORIES) {
-      const news = await fetchCategory(cat);
-      results[cat.id] = news;
-      setNewsData(prev => ({ ...prev, [cat.id]: news }));
+      const { items, errors } = await fetchCategory(cat);
+      results[cat.id] = items;
+      setNewsData(prev => ({ ...prev, [cat.id]: items }));
+      setFeedErrors(prev => ({ ...prev, [cat.id]: errors }));
     }
     setLoading(false);
     setSpinning(false);
@@ -307,7 +355,12 @@ export default function NewsApp() {
             {activeCategory?.label}
           </h2>
           <p style={{ margin: "3px 0 0", fontSize: "12px", color: "#333", fontFamily: "'DM Mono', monospace" }}>
-            {currentNews.length} articles · sources réelles · cliquez pour lire
+            {currentNews.length} articles · cliquez pour lire
+            {feedErrors[activeTab]?.length > 0 && (
+              <span style={{ color: "#4a2020", marginLeft: "8px" }}>
+                · ✗ {feedErrors[activeTab].join(", ")}
+              </span>
+            )}
           </p>
         </div>
 
