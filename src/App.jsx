@@ -44,15 +44,10 @@ async function fetchNews(category) {
   const res = await fetch("/api/news", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model: "claude-sonnet-4-20250514",
-      max_tokens: 2000,
-      system: "Tu es un agrégateur de news mondial. Réponds UNIQUEMENT avec du JSON valide, sans markdown, sans backticks.",
-      messages: [{ role: "user", content: category.prompt }],
-    }),
+    body: JSON.stringify({ system: "Tu es un agrégateur de news mondial. Réponds UNIQUEMENT avec du JSON valide, sans markdown, sans backticks.", prompt: category.prompt }),
   });
   const data = await res.json();
-  const text = data.content?.[0]?.text || "{}";
+  const text = data.text || "{}";
   return JSON.parse(text.replace(/```json|```/g, "").trim()).news || [];
 }
 
@@ -61,17 +56,14 @@ async function fetchDailyDigest() {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      model: "claude-sonnet-4-20250514",
-      max_tokens: 1500,
       system: "Tu es un éditorialiste. Réponds UNIQUEMENT avec du JSON valide, sans markdown, sans backticks.",
-      messages: [{ role: "user", content: `Génère les 5 actualités les plus importantes de ce jour. Pour chaque news: titre fort, résumé complet de 3-4 lignes, source crédible, catégorie parmi [Finance, Économie, Politique, Social & Culturel]. Réponds UNIQUEMENT en JSON: {"digest": [{"title":"","summary":"","source":"","category":""}]}` }],
+      prompt: `Génère les 5 actualités les plus importantes de ce jour. Pour chaque news: titre fort, résumé complet de 3-4 lignes, source crédible, catégorie parmi [Finance, Économie, Politique, Social & Culturel]. Réponds UNIQUEMENT en JSON: {"digest": [{"title":"","summary":"","source":"","category":""}]}`
     }),
   });
   const data = await res.json();
-  const text = data.content?.[0]?.text || "{}";
+  const text = data.text || "{}";
   return JSON.parse(text.replace(/```json|```/g, "").trim()).digest || [];
 }
-
 const REGION_COLORS = {
   Europe: "#e8e8e8", Amériques: "#c8c8c8", Asie: "#b0b0b0",
   Global: "#f0f0f0", Émergents: "#a8a8a8", France: "#efefef",
