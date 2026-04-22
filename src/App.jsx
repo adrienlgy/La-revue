@@ -2,10 +2,11 @@ import { useState, useEffect, useCallback, useRef } from "react";
 
 const fontLink = document.createElement("link");
 fontLink.rel = "stylesheet";
-fontLink.href = "https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=DM+Mono:wght@400;500&display=swap";
+fontLink.href = "https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&family=DM+Mono:wght@400;500&display=swap";
 document.head.appendChild(fontLink);
 
-const RSS_PROXY = "https://api.rss2json.com/v1/api.json?rss_url=";
+// Use corsproxy.io to bypass CORS
+const PROXY = "https://corsproxy.io/?";
 
 const CATEGORIES = [
   {
@@ -15,9 +16,8 @@ const CATEGORIES = [
     icon: "↗",
     feeds: [
       { url: "https://www.lesechos.fr/rss/rss_finance.xml", source: "Les Échos", region: "Europe" },
-      { url: "https://feeds.bloomberg.com/markets/news.rss", source: "Bloomberg", region: "Global" },
-      { url: "https://www.boursorama.com/bourse/actualites/rss/", source: "Boursorama", region: "Europe" },
       { url: "https://feeds.reuters.com/reuters/businessNews", source: "Reuters", region: "Global" },
+      { url: "https://www.lefigaro.fr/rss/figaro_economie.xml", source: "Le Figaro", region: "Europe" },
     ],
   },
   {
@@ -27,9 +27,8 @@ const CATEGORIES = [
     icon: "◈",
     feeds: [
       { url: "https://www.lemonde.fr/economie/rss_full.xml", source: "Le Monde Éco", region: "France" },
-      { url: "https://www.lesechos.fr/rss/rss_economie.xml", source: "Les Échos", region: "Europe" },
-      { url: "https://feeds.reuters.com/reuters/businessNews", source: "Reuters", region: "Global" },
-      { url: "https://www.lefigaro.fr/rss/figaro_economie.xml", source: "Le Figaro Éco", region: "France" },
+      { url: "https://feeds.reuters.com/reuters/businessNews", source: "Reuters Éco", region: "Global" },
+      { url: "https://www.lesechos.fr/rss/rss_economie.xml", source: "Les Échos", region: "France" },
     ],
   },
   {
@@ -41,7 +40,6 @@ const CATEGORIES = [
       { url: "https://www.lemonde.fr/politique/rss_full.xml", source: "Le Monde", region: "France" },
       { url: "https://www.lefigaro.fr/rss/figaro_politique.xml", source: "Le Figaro", region: "France" },
       { url: "https://feeds.reuters.com/Reuters/worldNews", source: "Reuters World", region: "Global" },
-      { url: "https://www.france24.com/fr/rss", source: "France 24", region: "Global" },
     ],
   },
   {
@@ -53,7 +51,6 @@ const CATEGORIES = [
       { url: "https://www.lemonde.fr/societe/rss_full.xml", source: "Le Monde Société", region: "France" },
       { url: "https://www.lemonde.fr/culture/rss_full.xml", source: "Le Monde Culture", region: "France" },
       { url: "https://feeds.bbci.co.uk/news/entertainment_and_arts/rss.xml", source: "BBC Culture", region: "Global" },
-      { url: "https://www.lefigaro.fr/rss/figaro_culture.xml", source: "Le Figaro Culture", region: "France" },
     ],
   },
 ];
@@ -61,66 +58,55 @@ const CATEGORIES = [
 const REFRESH_INTERVAL = 2.5 * 60 * 60 * 1000;
 const DIGEST_HOUR = 18;
 
-async function fetchFeed(feedInfo) {
-  try {
-    const url = `${RSS_PROXY}${encodeURIComponent(feedInfo.url)}&count=4`;
-    const res = await fetch(url);
-    const data = await res.json();
-    if (data.status !== "ok") return [];
-    return (data.items || []).map(item => ({
-      title: item.title || "",
-      summary: item.description
-        ? item.description.replace(/<[^>]*>/g, "").slice(0, 200) + "..."
-        : "",
-      source: feedInfo.source,
-      region: feedInfo.region,
-      tag: feedInfo.source,
-      time: item.pubDate
-        ? formatTime(new Date(item.pubDate))
-        : "Récent",
-      link: item.link || "",
-    }));
-  } catch {
-    return [];
-  }
-}
-
 function formatTime(date) {
   const diff = Date.now() - date.getTime();
   const mins = Math.floor(diff / 60000);
   const hours = Math.floor(diff / 3600000);
   const days = Math.floor(diff / 86400000);
+  if (mins < 1) return "À l'instant";
   if (mins < 60) return `Il y a ${mins} min`;
   if (hours < 24) return `Il y a ${hours}h`;
   return `Il y a ${days}j`;
 }
 
+async function fetchFeed(feedInfo) {
+  try {
+    const proxiedUrl = PROXY + encodeURIComponent(feedInfo.url);
+    const res = await fetch(proxiedUrl);
+    const text = await res.text();
+    const parser = new DOMParser();
+    const xml = parser.parseFromString(text, "text/xml");
+    const items = Array.from(xml.querySelectorAll("item")).slice(0, 4);
+    return items.map(item => {
+      const title = item.querySelector("title")?.textContent || "";
+      const desc = item.querySelector("description")?.textContent || "";
+      const link = item.querySelector("link")?.textContent || "";
+      const pubDate = item.querySelector("pubDate")?.textContent || "";
+      const cleanDesc = desc.replace(/<[^>]*>/g, "").trim().slice(0, 220);
+      return {
+        title: title.replace(/<[^>]*>/g, "").trim(),
+        summary: cleanDesc + (cleanDesc.length >= 220 ? "..." : ""),
+        source: feedInfo.source,
+        region: feedInfo.region,
+        link,
+        time: pubDate ? formatTime(new Date(pubDate)) : "Récent",
+      };
+    });
+  } catch (e) {
+    console.error("Feed error:", feedInfo.source, e);
+    return [];
+  }
+}
+
 async function fetchCategory(category) {
   const results = await Promise.all(category.feeds.map(fetchFeed));
   const all = results.flat();
-  // Deduplicate by title and limit to 10
   const seen = new Set();
   return all.filter(item => {
-    if (seen.has(item.title)) return false;
+    if (!item.title || seen.has(item.title)) return false;
     seen.add(item.title);
     return true;
   }).slice(0, 10);
-}
-
-async function fetchDigest(allNews) {
-  // Pick top 5 most recent from all categories
-  const all = Object.values(allNews).flat();
-  return all
-    .sort((a, b) => {
-      const ta = a.time.includes("min") ? parseInt(a.time) : a.time.includes("h") ? parseInt(a.time) * 60 : 9999;
-      const tb = b.time.includes("min") ? parseInt(b.time) : b.time.includes("h") ? parseInt(b.time) * 60 : 9999;
-      return ta - tb;
-    })
-    .slice(0, 5)
-    .map(item => ({
-      ...item,
-      category: CATEGORIES.find(c => c.feeds.some(f => f.source === item.source))?.label || "News",
-    }));
 }
 
 export default function NewsApp() {
@@ -165,26 +151,26 @@ export default function NewsApp() {
     return results;
   }, []);
 
-  const checkDigestTime = useCallback(async () => {
-    const now = new Date();
-    if (now.getHours() === DIGEST_HOUR && !digestShownToday.current) {
-      digestShownToday.current = true;
-      const d = await fetchDigest(newsData);
-      setDigest(d);
-      setShowDigest(true);
-    }
-    if (now.getHours() === 0) digestShownToday.current = false;
-  }, [newsData]);
-
   useEffect(() => { loadAll(false); }, []);
+
   useEffect(() => {
     const auto = setInterval(() => loadAll(true), REFRESH_INTERVAL);
     return () => clearInterval(auto);
   }, [loadAll]);
+
   useEffect(() => {
-    const digestCheck = setInterval(checkDigestTime, 60000);
-    return () => clearInterval(digestCheck);
-  }, [checkDigestTime]);
+    const now = new Date();
+    if (now.getHours() === DIGEST_HOUR && !digestShownToday.current) {
+      digestShownToday.current = true;
+      const all = Object.values(newsData).flat().slice(0, 5);
+      setDigest(all.map(item => ({
+        ...item,
+        category: CATEGORIES.find(c => c.feeds.some(f => f.source === item.source))?.label || "News",
+      })));
+      setShowDigest(true);
+    }
+  }, [newsData]);
+
   useEffect(() => {
     const tick = setInterval(() => {
       if (!nextRefresh) return;
@@ -202,7 +188,7 @@ export default function NewsApp() {
   const currentNews = newsData[activeTab] || [];
 
   return (
-    <div style={{ minHeight: "100vh", background: "#0d0d0d", color: "#ededed", fontFamily: "'DM Sans', sans-serif", position: "relative" }}>
+    <div style={{ minHeight: "100vh", background: "#0d0d0d", color: "#ededed", fontFamily: "'DM Sans', sans-serif" }}>
 
       {/* HEADER */}
       <header style={{
@@ -226,11 +212,15 @@ export default function NewsApp() {
             </div>
           </div>
         </div>
+
         <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
           <button
-            onClick={async () => {
-              const d = await fetchDigest(newsData);
-              setDigest(d);
+            onClick={() => {
+              const all = Object.values(newsData).flat().slice(0, 5);
+              setDigest(all.map(item => ({
+                ...item,
+                category: CATEGORIES.find(c => c.feeds.some(f => f.source === item.source))?.label || "News",
+              })));
               setShowDigest(true);
             }}
             style={{
@@ -241,9 +231,8 @@ export default function NewsApp() {
             }}
             onMouseEnter={e => { e.currentTarget.style.borderColor = "#444"; e.currentTarget.style.color = "#ccc"; }}
             onMouseLeave={e => { e.currentTarget.style.borderColor = "#222"; e.currentTarget.style.color = "#666"; }}
-          >
-            ✦ Top 5 du jour
-          </button>
+          >✦ Top 5 du jour</button>
+
           <button
             onClick={() => !loading && loadAll(false)}
             disabled={loading}
@@ -269,7 +258,7 @@ export default function NewsApp() {
       <div style={{
         display: "flex", padding: "0 32px",
         borderBottom: "1px solid #161616", background: "#0a0a0a",
-        gap: "2px", overflowX: "auto",
+        overflowX: "auto",
       }}>
         {CATEGORIES.map(cat => {
           const isActive = activeTab === cat.id;
@@ -297,9 +286,7 @@ export default function NewsApp() {
                   color: isActive ? "#0d0d0d" : "#3d3d3d",
                   borderRadius: "20px", padding: "1px 8px",
                   fontSize: "10px", fontFamily: "'DM Mono', monospace",
-                }}>
-                  {newsData[cat.id].length}
-                </span>
+                }}>{newsData[cat.id].length}</span>
               )}
             </button>
           );
@@ -384,10 +371,12 @@ export default function NewsApp() {
                             {item.summary}
                           </p>
                           {item.link && (
-                            <a href={item.link} target="_blank" rel="noopener noreferrer" style={{
-                              fontSize: "11px", color: "#555", fontFamily: "'DM Mono', monospace",
-                              textDecoration: "none", borderBottom: "1px solid #333",
-                            }}>
+                            <a href={item.link} target="_blank" rel="noopener noreferrer"
+                              onClick={e => e.stopPropagation()}
+                              style={{
+                                fontSize: "11px", color: "#666", fontFamily: "'DM Mono', monospace",
+                                textDecoration: "none", borderBottom: "1px solid #333", paddingBottom: "1px",
+                              }}>
                               Lire l'article complet →
                             </a>
                           )}
@@ -411,7 +400,7 @@ export default function NewsApp() {
         )}
       </main>
 
-      {/* AUTO POPUP */}
+      {/* POPUP */}
       {popup && (
         <div style={{
           position: "fixed", bottom: "24px", right: "24px", width: "320px",
@@ -435,7 +424,7 @@ export default function NewsApp() {
         </div>
       )}
 
-      {/* DIGEST MODAL */}
+      {/* DIGEST */}
       {showDigest && (
         <div style={{
           position: "fixed", inset: 0, background: "rgba(0,0,0,0.85)",
@@ -454,9 +443,7 @@ export default function NewsApp() {
                 <div style={{ fontSize: "10px", fontFamily: "'DM Mono', monospace", color: "#444", marginBottom: "4px" }}>
                   ✦ RÉCAP · {new Date().toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" }).toUpperCase()}
                 </div>
-                <h2 style={{ margin: 0, fontSize: "20px", fontWeight: "700", letterSpacing: "-0.4px", color: "#fff" }}>
-                  Top 5 actualités du jour
-                </h2>
+                <h2 style={{ margin: 0, fontSize: "20px", fontWeight: "700", color: "#fff" }}>Top 5 du jour</h2>
               </div>
               <button onClick={() => setShowDigest(false)} style={{
                 background: "#1a1a1a", border: "none", color: "#666",
@@ -472,29 +459,20 @@ export default function NewsApp() {
             ) : (
               <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
                 {digest.map((item, i) => (
-                  <div key={i} style={{
-                    padding: "18px 16px", borderRadius: "10px",
-                    background: "#131313", border: "1px solid #1a1a1a",
-                  }}>
+                  <div key={i} style={{ padding: "18px 16px", borderRadius: "10px", background: "#131313", border: "1px solid #1a1a1a" }}>
                     <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "10px" }}>
                       <span style={{
                         fontFamily: "'DM Mono', monospace", fontSize: "11px", fontWeight: "700",
                         color: "#0d0d0d", background: "#fff",
                         width: "22px", height: "22px", borderRadius: "50%",
-                        display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
+                        display: "flex", alignItems: "center", justifyContent: "center",
                       }}>{i + 1}</span>
-                      <span style={{
-                        fontSize: "10px", fontFamily: "'DM Mono', monospace", color: "#555",
-                        background: "#1a1a1a", border: "1px solid #222",
-                        padding: "2px 8px", borderRadius: "4px",
-                      }}>{item.source}</span>
+                      <span style={{ fontSize: "10px", fontFamily: "'DM Mono', monospace", color: "#555", background: "#1a1a1a", border: "1px solid #222", padding: "2px 8px", borderRadius: "4px" }}>
+                        {item.source}
+                      </span>
                     </div>
-                    <h3 style={{ margin: "0 0 8px", fontSize: "14px", fontWeight: "600", color: "#e8e8e8", lineHeight: "1.4" }}>
-                      {item.title}
-                    </h3>
-                    <p style={{ margin: "0 0 8px", fontSize: "12px", color: "#666", lineHeight: "1.7" }}>
-                      {item.summary}
-                    </p>
+                    <h3 style={{ margin: "0 0 8px", fontSize: "14px", fontWeight: "600", color: "#e8e8e8", lineHeight: "1.4" }}>{item.title}</h3>
+                    <p style={{ margin: "0 0 8px", fontSize: "12px", color: "#666", lineHeight: "1.7" }}>{item.summary}</p>
                   </div>
                 ))}
               </div>
@@ -504,7 +482,6 @@ export default function NewsApp() {
       )}
 
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&family=DM+Mono:wght@400;500&display=swap');
         @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
         @keyframes pulse { 0%,100% { opacity: 0.25; } 50% { opacity: 1; } }
         @keyframes slideUp { from { transform: translateY(12px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
