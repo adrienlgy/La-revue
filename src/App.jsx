@@ -41,35 +41,48 @@ const REFRESH_INTERVAL = 2.5 * 60 * 60 * 1000;
 const DIGEST_HOUR = 18; // 18h00
 
 async function fetchNews(category) {
-  const res = await fetch("/api/news", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ system: "Tu es un agrégateur de news mondial. Réponds UNIQUEMENT avec du JSON valide, sans markdown, sans backticks.", prompt: category.prompt }),
-  });
-  const data = await res.json();
-  const text = data.text || "{}";
-  return JSON.parse(text.replace(/```json|```/g, "").trim()).news || [];
+  try {
+    const res = await fetch("/api/news", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        system: "Tu es un agrégateur de news mondial. Réponds UNIQUEMENT avec du JSON valide, sans markdown, sans backticks, sans texte avant ou après.",
+        prompt: category.prompt
+      }),
+    });
+    const data = await res.json();
+    const text = (data.text || "{}").replace(/```json|```/g, "").trim();
+    const start = text.indexOf("{");
+    const end = text.lastIndexOf("}");
+    const clean = text.slice(start, end + 1);
+    return JSON.parse(clean).news || [];
+  } catch (e) {
+    console.error("fetchNews error:", e);
+    return [];
+  }
 }
 
 async function fetchDailyDigest() {
-  const res = await fetch("/api/news", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      system: "Tu es un éditorialiste. Réponds UNIQUEMENT avec du JSON valide, sans markdown, sans backticks.",
-      prompt: `Génère les 5 actualités les plus importantes de ce jour. Pour chaque news: titre fort, résumé complet de 3-4 lignes, source crédible, catégorie parmi [Finance, Économie, Politique, Social & Culturel]. Réponds UNIQUEMENT en JSON: {"digest": [{"title":"","summary":"","source":"","category":""}]}`
-    }),
-  });
-  const data = await res.json();
-  const text = data.text || "{}";
-  return JSON.parse(text.replace(/```json|```/g, "").trim()).digest || [];
+  try {
+    const res = await fetch("/api/news", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        system: "Tu es un éditorialiste. Réponds UNIQUEMENT avec du JSON valide, sans markdown, sans backticks, sans texte avant ou après.",
+        prompt: `Génère les 5 actualités les plus importantes de ce jour. Pour chaque news: titre fort, résumé complet de 3-4 lignes, source crédible, catégorie parmi [Finance, Économie, Politique, Social & Culturel]. Réponds UNIQUEMENT en JSON: {"digest": [{"title":"","summary":"","source":"","category":""}]}`
+      }),
+    });
+    const data = await res.json();
+    const text = (data.text || "{}").replace(/```json|```/g, "").trim();
+    const start = text.indexOf("{");
+    const end = text.lastIndexOf("}");
+    const clean = text.slice(start, end + 1);
+    return JSON.parse(clean).digest || [];
+  } catch (e) {
+    console.error("fetchDailyDigest error:", e);
+    return [];
+  }
 }
-const REGION_COLORS = {
-  Europe: "#e8e8e8", Amériques: "#c8c8c8", Asie: "#b0b0b0",
-  Global: "#f0f0f0", Émergents: "#a8a8a8", France: "#efefef",
-  Afrique: "#989898", "Moyen-Orient": "#888888",
-};
-
 export default function NewsApp() {
   const [activeTab, setActiveTab] = useState("finance");
   const [newsData, setNewsData] = useState({});
