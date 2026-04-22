@@ -73,28 +73,45 @@ function formatTime(date) {
   return `Il y a ${days}j`;
 }
 
+function mapItems(rawItems, feedInfo) {
+  return rawItems.map(item => {
+    const raw = (item.description || item.content || "").replace(/<[^>]*>/g, "").trim();
+    return {
+      title: (item.title || "").replace(/<[^>]*>/g, "").trim(),
+      summary: raw.slice(0, 220) + (raw.length >= 220 ? "..." : ""),
+      source: feedInfo.source,
+      region: feedInfo.region,
+      link: item.link || item.guid || "",
+      time: item.pubDate ? formatTime(new Date(item.pubDate)) : "Récent",
+    };
+  }).filter(i => i.title);
+}
+
 async function fetchFeed(feedInfo) {
+  // Primary: Vercel serverless proxy (server-side fetch, no CORS)
   try {
     const res = await fetch(RSS_API + encodeURIComponent(feedInfo.url));
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const json = await res.json();
-    if (json.status !== "ok") throw new Error(json.error || "error");
-    return {
-      items: json.items.map(item => {
-        const raw = (item.description || "").replace(/<[^>]*>/g, "").trim();
-        return {
-          title: (item.title || "").replace(/<[^>]*>/g, "").trim(),
-          summary: raw.slice(0, 220) + (raw.length >= 220 ? "..." : ""),
-          source: feedInfo.source,
-          region: feedInfo.region,
-          link: item.link || "",
-          time: item.pubDate ? formatTime(new Date(item.pubDate)) : "Récent",
-        };
-      }).filter(i => i.title),
-      error: null,
-    };
+    if (json.status === "ok" && json.items?.length) {
+      return { items: mapItems(json.items, feedInfo), error: null };
+    }
+    throw new Error(json.error || "no items");
   } catch (e) {
-    console.error(`Feed error [${feedInfo.source}]:`, e.message);
+    console.warn(`/api/rss failed [${feedInfo.source}]: ${e.message}`);
+  }
+
+  // Fallback: rss2json (client-side)
+  try {
+    const res = await fetch(`https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(feedInfo.url)}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const json = await res.json();
+    if (json.status === "ok" && json.items?.length) {
+      return { items: mapItems(json.items, feedInfo), error: null };
+    }
+    throw new Error(json.message || "no items");
+  } catch (e) {
+    console.error(`All methods failed [${feedInfo.source}]: ${e.message}`);
     return { items: [], error: e.message };
   }
 }
@@ -137,14 +154,17 @@ export default function NewsApp() {
     setLastRefresh(now);
     setNextRefresh(new Date(now.getTime() + REFRESH_INTERVAL));
     const results = {};
-    for (const cat of CATEGORIES) {
-      const { items, errors } = await fetchCategory(cat);
-      results[cat.id] = items;
-      setNewsData(prev => ({ ...prev, [cat.id]: items }));
-      setFeedErrors(prev => ({ ...prev, [cat.id]: errors }));
+    try {
+      for (const cat of CATEGORIES) {
+        const { items, errors } = await fetchCategory(cat);
+        results[cat.id] = items;
+        setNewsData(prev => ({ ...prev, [cat.id]: items }));
+        setFeedErrors(prev => ({ ...prev, [cat.id]: errors }));
+      }
+    } finally {
+      setLoading(false);
+      setSpinning(false);
     }
-    setLoading(false);
-    setSpinning(false);
 
     if (withPopup) {
       const all = Object.values(results).flat();
