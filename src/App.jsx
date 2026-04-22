@@ -73,17 +73,24 @@ async function fetchFeed(feedInfo) {
   try {
     const proxiedUrl = PROXY + encodeURIComponent(feedInfo.url);
     const res = await fetch(proxiedUrl);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const text = await res.text();
     const parser = new DOMParser();
     const xml = parser.parseFromString(text, "text/xml");
-    const items = Array.from(xml.querySelectorAll("item")).slice(0, 4);
+    if (xml.querySelector("parsererror")) {
+      console.error("XML parse error for", feedInfo.source, text.slice(0, 300));
+      return [];
+    }
+    // Support RSS (<item>) and Atom (<entry>)
+    const items = Array.from(xml.querySelectorAll("item, entry")).slice(0, 4);
     return items.map(item => {
       const title = item.querySelector("title")?.textContent || "";
-      const desc = item.querySelector("description")?.textContent || "";
-      const linkEl = item.querySelector("link");
-      const link = linkEl?.textContent || linkEl?.getAttribute("href") ||
-        item.getElementsByTagName("link")[0]?.textContent || "";
-      const pubDate = item.querySelector("pubDate")?.textContent || "";
+      const desc = item.querySelector("description, summary, content")?.textContent || "";
+      // RSS: <link>url</link>  Atom: <link href="url"/>
+      const linkEl = Array.from(item.getElementsByTagName("link"))
+        .find(el => el.getAttribute("rel") !== "replies") || item.getElementsByTagName("link")[0];
+      const link = linkEl?.getAttribute("href") || linkEl?.textContent?.trim() || "";
+      const pubDate = item.querySelector("pubDate, published, updated")?.textContent || "";
       const cleanDesc = desc.replace(/<[^>]*>/g, "").trim().slice(0, 220);
       return {
         title: title.replace(/<[^>]*>/g, "").trim(),
